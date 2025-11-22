@@ -1,0 +1,127 @@
+/* --- CARD BASE STYLE --- */
+.card {
+    width: 80px;
+    height: 116px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    border-radius: 2px;
+    top: 0;
+    left: 0;
+
+    position: absolute;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: transform 0.15s ease;
+
+    z-index: 10000;
+}
+
+
+
+/* Slight "lift" effect on hover */
+.card:hover {
+    transform: scale(1.05);
+}
+
+/* When card is face-down */
+.face-down {
+    background-image: url("img/standard-deck/back.png") !important;
+}
+
+/* Deck wrapper = centered stack */
+.deck {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotateX(12deg); /* ← the key */
+    perspective: 800px;
+}
+
+/* Optional: smooth dragging */
+.card.dragging {
+    opacity: 0.85;
+    transition: none !important;
+}
+
+/*prevent scrolling*/
+html, body {
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* Allow rotation + transform stacking to look natural */
+/* Enable 3D stacking for a clean deck depth effect */
+.deck {
+    perspective: 800px; /* allows 3D to show up */
+}
+
+.deck .card {
+    transform-style: preserve-3d;
+}
+
+/* --- HEADER BAR --- */
+.header-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+
+    background: #222;
+    color: white;
+    z-index: 9999;
+
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Buttons inside header */
+.header-bar button {
+    background: #444;
+    color: white;
+    border: 1px solid #666;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    transition: 0.15s ease;
+}
+
+.header-bar button:hover {
+    background: #666;
+}
+
+body {
+    padding-top: 60px; /* prevents the deck from going under the header */
+}
+
+.hand-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+
+    height: 190px;
+    background: #e6e6e6;
+    border-top: 4px solid #aaa;
+
+    z-index: 9998;
+}
+
+/* Hover highlight when dragging above it */
+.hand-area.hovered {
+    background: #d4d4d4;
+    border-top-color: #666;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.25);
+}
+
+
