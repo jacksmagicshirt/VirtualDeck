@@ -1,4 +1,3 @@
-
 /********************************************
  * index.js - main game logic (drag, deck, hand area)
  ********************************************/
@@ -23,6 +22,42 @@ const handArea = document.getElementById("handArea");
 let handCards = [];            // array of cards currently "in" the hand (visual only)
 let draggedCard = null;        // currently dragging card
 let currentOffset = { x: 0, y: 0 };
+
+/********************************************
+ * Input Helpers (merged from KeyPressListener.js)
+ ********************************************/
+
+class KeyPressListener {
+    constructor(key, callback) {
+        this.key = key;
+        this.callback = callback;
+
+        this.keydownFn = (e) => {
+            if (e.key === this.key) {
+                this.callback(e);
+            }
+        };
+
+        document.addEventListener("keydown", this.keydownFn);
+    }
+
+    unbind() {
+        document.removeEventListener("keydown", this.keydownFn);
+    }
+}
+
+function onHold(element, holdTime, onHoldStart, onClick) {
+    let timer = null;
+
+    element.addEventListener("mousedown", (e) => {
+        timer = setTimeout(() => onHoldStart(e), holdTime);
+    });
+
+    element.addEventListener("mouseup", (e) => {
+        clearTimeout(timer);
+        onClick(e);
+    });
+}
 
 /********************************************
  * Create 52 card divs
@@ -61,16 +96,12 @@ function createCardDivs() {
 /********************************************
  * Deck Creation
  ********************************************/
-function createDeck() {
-    const deckDiv = document.createElement("div");
-    deckDiv.className = "deck";
 
-    const cards = createCardDivs();
-    const shuffled = shuffleDeck(cards);
+function renderDeck(deckDiv, cards) {
+    deckDiv.innerHTML = ''; 
 
-    shuffled.forEach((card, index) => {
-        // subtle Z stacking visible with deck tilt in CSS
-        const depth = index * 1; // px
+    cards.forEach((card, index) => {
+        const depth = index * 1; 
         card.style.left = "0px";
         card.style.top = "0px";
         card.style.transform = `translateZ(${depth}px)`;
@@ -80,12 +111,34 @@ function createDeck() {
     document.body.appendChild(deckDiv);
 }
 
-function shuffleDeck(deck) {
-    for (let i = deck.length - 1; i > 0; i--) {
+function createDeck() {
+    const deckDiv = document.createElement("div");
+    deckDiv.className = "deck";
+
+    const cards = createCardDivs();
+    const shuffled = shuffleDeckArray(cards);
+    renderDeck(deckDiv, shuffled);
+}
+
+/********************************************
+ * Shuffle the deck 
+ ********************************************/
+const shuffleButton = document.getElementById("btn-shuffle");
+shuffleButton.addEventListener('click', shuffleDeck);
+
+function shuffleDeckArray(cards) {
+    for (let i = cards.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
+        [cards[i], cards[j]] = [cards[j], cards[i]];
     }
-    return deck;
+    return cards;
+}
+
+function shuffleDeck() {
+    const deckDiv = document.querySelector(".deck");
+    const cards = Array.from(deckDiv.children);
+    shuffleDeckArray(cards);
+    renderDeck(deckDiv, cards);
 }
 
 /********************************************
@@ -104,26 +157,22 @@ function flipCard(card) {
 }
 
 /********************************************
- * Drag Logic (Option B, keep cards as children of body)
+ * Drag Logic
  ********************************************/
 function startCardDrag(card, e) {
-    // If this card was in the hand, remove it from handCards
     if (card.dataset.inHand === "true") {
         removeFromHand(card);
         card.dataset.inHand = "false";
     }
 
-    // If card is inside a deck container, move it to body and preserve absolute position
     if (card.parentElement && card.parentElement.classList.contains("deck")) {
         const startRect = card.getBoundingClientRect();
-        document.body.appendChild(card); // move to body
+        document.body.appendChild(card);
         card.style.left = startRect.left + "px";
         card.style.top = startRect.top + "px";
-        // clear transform that might conflict from deck stacking
         card.style.transform = "";
     }
 
-    // prepare offsets
     const rect = card.getBoundingClientRect();
     currentOffset.x = e.clientX - rect.left;
     currentOffset.y = e.clientY - rect.top;
@@ -155,15 +204,12 @@ function startCardDrag(card, e) {
 
         draggedCard.classList.remove("dragging");
 
-        // If dropped inside hand area -> place into hand (visual only, don't change parent)
         if (isInsideHandArea(ev)) {
             addToHand(draggedCard);
         }
 
-        // Clear hovered state
         if (handArea) handArea.classList.remove("hovered");
 
-        // remove listeners and clear state
         document.removeEventListener("mousemove", move);
         document.removeEventListener("mouseup", stop);
         draggedCard = null;
@@ -179,13 +225,10 @@ function startCardDrag(card, e) {
 function addCardInput(card, handlers) {
     let holdTimer = null;
     let isHold = false;
-    const HOLD_DELAY = 150; // ms
+    const HOLD_DELAY = 150;
 
     card.addEventListener("mousedown", (e) => {
-        // Prevent text selection / dragging weirdness
         e.preventDefault();
-
-        // Support left-click only
         holdTimer = setTimeout(() => {
             isHold = true;
             handlers.onHoldStart?.(e);
@@ -200,7 +243,6 @@ function addCardInput(card, handlers) {
         isHold = false;
     });
 
-    // Allow keyboard accessibility: Enter/Space to flip when focused (optional)
     card.tabIndex = 0;
     card.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -211,10 +253,9 @@ function addCardInput(card, handlers) {
 }
 
 /********************************************
- * Hand area management (Option B: visual-only hand area)
+ * Hand area management 
  ********************************************/
 
-// Hover highlight while dragging (keeps existing behavior)
 if (handArea) {
     document.addEventListener("mousemove", (e) => {
         const rect = handArea.getBoundingClientRect();
@@ -243,16 +284,9 @@ function isInsideHandArea(ev) {
     );
 }
 
-/**
- * addToHand(card)
- * - Marks card as "in hand"
- * - Adds to handCards array
- * - Calls layoutHand() to reposition hand visually
- * - Does NOT change DOM parent (card remains under document.body)
- */
 function addToHand(card) {
     if (!handArea) return;
-    if (card.dataset.inHand === "true") return; // already in hand
+    if (card.dataset.inHand === "true") return;
 
     card.dataset.inHand = "true";
     handCards.push(card);
@@ -261,10 +295,6 @@ function addToHand(card) {
     layoutHand();
 }
 
-/**
- * removeFromHand(card)
- * - Removes card from handCards array and re-layouts
- */
 function removeFromHand(card) {
     const idx = handCards.indexOf(card);
     if (idx >= 0) {
@@ -274,18 +304,12 @@ function removeFromHand(card) {
     card.dataset.inHand = "false";
 }
 
-/**
- * layoutHand()
- * - Positions all cards in handCards neatly inside the hand area,
- *   while keeping them children of document.body (so dragging remains consistent).
- */
 function layoutHand() {
     if (!handArea) return;
     const rect = handArea.getBoundingClientRect();
 
-    // Hand padding and card spacing
-    const cardWidth = 80; // should match .card width in CSS
-    const spacing = Math.min(40, Math.max(24, cardWidth * 0.6)); // responsive spacing
+    const cardWidth = 80;
+    const spacing = Math.min(40, Math.max(24, cardWidth * 0.6));
     const totalWidth = spacing * (handCards.length - 1) + cardWidth;
     const startX = rect.left + Math.max(12, (rect.width - totalWidth) / 2);
     const y = rect.top + Math.max(8, (rect.height - parseInt(getComputedStyle(document.documentElement).fontSize, 10)) / 4);
