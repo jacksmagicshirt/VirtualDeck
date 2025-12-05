@@ -98,18 +98,28 @@ function createCardDivs() {
  ********************************************/
 
 function renderDeck(deckDiv, cards) {
-    deckDiv.innerHTML = ''; 
+    deckDiv.innerHTML = '';
+
+    const now = Date.now();
 
     cards.forEach((card, index) => {
-        const depth = index * 1; 
+        // don't re-attach cards that are currently in the hand
+        if (card.dataset && card.dataset.inHand === "true") return;
+
+        // short-lived optimistic guard: if card was moved locally very recently, skip it
+        if (card.dataset.movedAt && now - Number(card.dataset.movedAt) < 700) return;
+
+        const depth = index * 1;
         card.style.left = "0px";
         card.style.top = "0px";
         card.style.transform = `translateZ(${depth}px)`;
         deckDiv.appendChild(card);
     });
 
-    document.body.appendChild(deckDiv);
+    // ensure deck is present in DOM
+    if (!document.body.contains(deckDiv)) document.body.appendChild(deckDiv);
 }
+
 
 function createDeck() {
     const deckDiv = document.createElement("div");
@@ -160,10 +170,20 @@ function flipCard(card) {
  * Drag Logic
  ********************************************/
 function startCardDrag(card, e) {
+    
     if (card.dataset.inHand === "true") {
+        const rect = card.getBoundingClientRect();
+        card.dataset.draggingFromHand = "true"; // ✅ preserve visual position
         removeFromHand(card);
         card.dataset.inHand = "false";
+
+        document.body.appendChild(card);          // ✅ detach from hand flow
+        card.style.left = rect.left + "px";       // ✅ keep same spot
+        card.style.top = rect.top + "px";
+        card.style.transform = "";
     }
+
+
 
     if (card.parentElement && card.parentElement.classList.contains("deck")) {
         const startRect = card.getBoundingClientRect();

@@ -302,6 +302,17 @@
   }
 
   function renderCardFromState(cardId, state) {
+    // ✅ HARD GUARD: Ignore corrupted partial overwrites that would yank cards from hand
+    if (
+      state.owner === undefined &&
+      state.x === undefined &&
+      state.y === undefined &&
+      state.grabbedBy === undefined
+    ) {
+      console.warn("IGNORED CORRUPTED CARD UPDATE:", cardId, state);
+      return;
+    }
+
     const el = findCardElement(cardId);
     if (!el) return; // card DOM not yet created
     // Apply face
@@ -361,8 +372,20 @@
     }
 
     // Position on table if x/y present. If null => keep in deck area (the deck div)
-    if (state.x == null || state.y == null) {
-      // put in deck stack container
+    // Position on table if x/y present. If null => only put into deck if card has NO owner
+    if ((state.x == null || state.y == null) && !state.owner) {
+      // If the local UI currently considers this card to be "inHand", do not move it.
+      if (el.dataset && el.dataset.inHand === "true") {
+        // keep local hand placement — server is stale or racing.
+        return;
+      }
+
+      // short-lived optimistic guard: if moved locally in last 700ms, ignore server deck placement
+      const now = Date.now();
+      if (el.dataset.movedAt && now - Number(el.dataset.movedAt) < 700) {
+        return;
+      }
+
       const deckDiv = document.querySelector('.deck');
       if (deckDiv && el.parentElement !== deckDiv) {
         deckDiv.appendChild(el);
@@ -370,7 +393,9 @@
         el.style.top = '0px';
         el.style.transform = '';
       }
-    } else {
+    }
+
+     else {
       // absolute position on page
       if (document.body !== el.parentElement) {
         document.body.appendChild(el);
@@ -400,42 +425,60 @@
   }
 
   function setupDeckListeners() {
-    // child_added and child_changed both call renderCardFromState
-    deckRef.on('child_added', (snap) => {
-      const id = snap.key;
-      const state = snap.val();
-      renderCardFromState(id, state);
-    });
-    deckRef.on('child_changed', (snap) => {
-      const id = snap.key;
-      const state = snap.val();
-      renderCardFromState(id, state);
-      // update handCount of players (recompute simple way)
-      recomputeHandCounts(); 
-    });
-    deckRef.on('child_removed', (snap) => {
-      // not expected in this design
-    });
-  }
+  // child_added and child_changed both call renderCardFromState
+  deckRef.on('child_added', (snap) => {
+    const id = snap.key;
+    const state = snap.val();
+    renderCardFromState(id, state);
+  });
+
+  deckRef.on('child_changed', (snap) => {
+    const id = snap.key;
+    const state = snap.val();
+
+    // DEBUG LOG: owner / lastWriter tracking
+    try {
+      const now = Date.now();
+      const lastWriter = state.lastWriter || 'unknown';
+      const lastWriteAt = state.lastWriteAt || 'unknown';
+      console.log(`[DECK CHANGE] ${id} owner=${state.owner} grabbedBy=${state.grabbedBy} x=${state.x} y=${state.y} — lastWriter=${lastWriter} lastWriteAt=${lastWriteAt} (localId=${playerId})`);
+    } catch (e) {
+      console.log('[DECK CHANGE] (log failure)', e);
+    }
+
+    renderCardFromState(id, state);
+    // update handCount of players (recompute simple way)
+    recomputeHandCounts();
+  });
+
+  deckRef.on('child_removed', (snap) => {
+    // not expected in this design
+  });
+}
+
 
   async function recomputeHandCounts() {
     const snap = await deckRef.once('value');
     if (!snap.exists()) return;
+
     const deck = snap.val();
     const counts = {};
+
     Object.keys(deck).forEach(k => {
-      const owner = deck[k].owner;
-      if (owner) counts[owner] = (counts[owner] || 0) + 1;
+      const owner = deck[k]?.owner;
+      if (typeof owner === "string") {
+        counts[owner] = (counts[owner] || 0) + 1;
+      }
     });
-    // Update playersRef.handCount for each player present
+
     const playersSnap = await playersRef.once('value');
     playersSnap.forEach(child => {
       const pId = child.key;
-      const pRef = playersRef.child(pId);
       const c = counts[pId] || 0;
-      pRef.update({ handCount: c });
+      playersRef.child(pId).update({ handCount: c });
     });
   }
+
 
   // ---------- Wrap local functions from index.js ----------
   // We assume index.js defines flipCard, addToHand, removeFromHand, startCardDrag globally.
@@ -465,29 +508,61 @@
         const id = getCardId(card);
         if (!id) return;
         // set owner to me and clear grabbedBy
-        deckRef.child(id).update({ owner: playerId, grabbedBy: null, x: null, y: null });
+        deckRef.child(id).update({ owner: playerId, x: null, y: null, grabbedBy: null });
       }
     }
 
     // wrap removeFromHand (when a card is returned to table)
-    if (typeof window.removeFromHand === 'function') {
+    // ✅ SAVE THE ORIGINAL FIRST
+    if (typeof window.removeFromHand === "function") {
       const originalRemove = window.removeFromHand;
+
+      // ✅ OVERRIDE SAFELY
       window.removeFromHand = function(card) {
-        // original will remove from local hand array and re-layout
+
+        // ✅ Always do the local UI removal
         originalRemove(card);
+
         if (!connectedToRoom) return;
+
         const id = getCardId(card);
         if (!id) return;
-        // Set owner null; location will be set by drop handler (wrapped startCardDrag)
-        deckRef.child(id).update({ owner: null, grabbedBy: null });
-      }
+
+        // ✅ Only clear owner IF the card already has real table coordinates
+        const left = parseInt(card.style.left, 10);
+        const top  = parseInt(card.style.top, 10);
+
+        const hasValidPosition =
+          !isNaN(left) &&
+          !isNaN(top);
+
+        if (!hasValidPosition) {
+          // ✅ This is a lift from hand → BLOCK owner clear to prevent deck snap
+          return;
+        }
+
+        // ✅ This is a REAL drop onto the table
+        deckRef.child(id).update({
+          owner: null,
+          grabbedBy: null
+        });
+      };
     }
+
+
+
 
     // wrap startCardDrag to set grabbedBy and listen for drop
     if (typeof window.startCardDrag === 'function') {
       const originalStart = window.startCardDrag;
       window.startCardDrag = function(card, e) {
         // set firebase grabbedBy
+        // ✅ If dragging from hand, set protection flag BEFORE removeFromHand can run
+        if (card.dataset.inHand === "true") {
+          card.dataset.draggingFromHand = "true";
+        }
+
+
         try {
           const id = getCardId(card);
           if (connectedToRoom && id) {
@@ -510,14 +585,28 @@
           if (!id || !connectedToRoom) return;
           // If card is placed in hand (dataset.inHand === "true"), owner already set by addToHand wrapper.
           if (card.dataset.inHand === 'true') {
-            // owner already set; ensure grabbedBy cleared
+            // ✅ Card is staying in hand — NEVER touch owner here
             await deckRef.child(id).update({ grabbedBy: null });
             return;
           }
-          // Else get its position on the page
+
+          // ✅ Only the TABLE PATH reaches here
           const left = parseInt(card.style.left || 0, 10);
-          const top = parseInt(card.style.top || 0, 10);
-          await deckRef.child(id).update({ x: left, y: top, grabbedBy: null, owner: null });
+          const top  = parseInt(card.style.top  || 0, 10);
+
+          // ✅ HARD SAFETY GUARD — PREVENT DECK SNAP STATE
+          if (isNaN(left) || isNaN(top)) {
+            console.warn("Blocked invalid table drop", id);
+            return;
+          }
+
+          await deckRef.child(id).update({
+            x: left,
+            y: top,
+            grabbedBy: null,
+            owner: null   // ✅ ONLY HERE. ONLY WITH VALID X/Y.
+          });
+
         };
         document.addEventListener('mouseup', onUp);
       };
