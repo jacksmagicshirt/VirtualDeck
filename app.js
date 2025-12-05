@@ -529,7 +529,13 @@
 
         // ✅ HARD BLOCK: Never clear owner if drag started from hand
         if (card.dataset.draggingFromHand === "true") {
-          return;
+          const idx = handCards.indexOf(card);
+          if (idx >= 0) handCards.splice(idx, 1);
+          deckRef.child(id).update({
+            owner: null,
+            inHand: "false",
+            grabbedBy: null
+          });
         }
 
         // ✅ Only clear owner if it was truly dropped on the TABLE
