@@ -302,7 +302,6 @@
   }
 
   function renderCardFromState(cardId, state) {
-    // ✅ HARD GUARD: Ignore corrupted partial overwrites that would yank cards from hand
     if (
       state.owner === undefined &&
       state.x === undefined &&
@@ -514,12 +513,10 @@
     }
 
     // wrap removeFromHand (when a card is returned to table)
-    // ✅ SAVE THE ORIGINAL FIRST
     if (typeof window.removeFromHand === "function") {
       const originalRemove = window.removeFromHand;
 
       window.removeFromHand = function(card) {
-        // ✅ Always remove locally for UI
         originalRemove(card);
 
         if (!connectedToRoom) return;
@@ -527,7 +524,6 @@
         const id = getCardId(card);
         if (!id) return;
 
-        // ✅ HARD BLOCK: Never clear owner if drag started from hand
         if (card.dataset.draggingFromHand === "true") {
           const idx = handCards.indexOf(card);
           if (idx >= 0) handCards.splice(idx, 1);
@@ -538,7 +534,6 @@
           });
         }
 
-        // ✅ Only clear owner if it was truly dropped on the TABLE
         const left = parseInt(card.style.left, 10);
         const top  = parseInt(card.style.top, 10);
 
@@ -564,7 +559,6 @@
       const originalStart = window.startCardDrag;
       window.startCardDrag = function(card, e) {
         // set firebase grabbedBy
-        // ✅ If dragging from hand, set protection flag BEFORE removeFromHand can run
         if (card.dataset.inHand === "true") {
           card.dataset.draggingFromHand = "true";
         }
@@ -592,16 +586,13 @@
           if (!id || !connectedToRoom) return;
           // If card is placed in hand (dataset.inHand === "true"), owner already set by addToHand wrapper.
           if (card.dataset.inHand === 'true') {
-            // ✅ Card is staying in hand — NEVER touch owner here
             await deckRef.child(id).update({ grabbedBy: null });
             return;
           }
 
-          // ✅ Only the TABLE PATH reaches here
           const left = parseInt(card.style.left || 0, 10);
           const top  = parseInt(card.style.top  || 0, 10);
 
-          // ✅ HARD SAFETY GUARD — PREVENT DECK SNAP STATE
           if (isNaN(left) || isNaN(top)) {
             console.warn("Blocked invalid table drop", id);
             return;
@@ -611,7 +602,7 @@
             x: left,
             y: top,
             grabbedBy: null,
-            owner: null   // ✅ ONLY HERE. ONLY WITH VALID X/Y.
+            owner: null   
           });
 
         };

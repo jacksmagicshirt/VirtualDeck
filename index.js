@@ -173,12 +173,12 @@ function startCardDrag(card, e) {
     
     if (card.dataset.inHand === "true") {
         const rect = card.getBoundingClientRect();
-        card.dataset.draggingFromHand = "true"; // ✅ preserve visual position
+        card.dataset.draggingFromHand = "true"; 
         removeFromHand(card);
         card.dataset.inHand = "false";
 
-        document.body.appendChild(card);          // ✅ detach from hand flow
-        card.style.left = rect.left + "px";       // ✅ keep same spot
+        document.body.appendChild(card);          
+        card.style.left = rect.left + "px";       
         card.style.top = rect.top + "px";
         card.style.transform = "";
     }
@@ -316,8 +316,7 @@ function addToHand(card) {
     handCards.push(card);
     card.style.zIndex = ++topZIndex;
 
-    card.dataset.ownerSynced = "true";               // local mark that we own it now
-    card.dataset.movedAt = Date.now().toString();
+    card.dataset.ownerSynced = "true";
 
     layoutHand();
 }
