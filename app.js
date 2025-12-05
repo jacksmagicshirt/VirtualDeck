@@ -509,6 +509,7 @@
         if (!id) return;
         // set owner to me and clear grabbedBy
         deckRef.child(id).update({ owner: playerId, x: null, y: null, grabbedBy: null });
+
       }
     }
 
@@ -517,10 +518,8 @@
     if (typeof window.removeFromHand === "function") {
       const originalRemove = window.removeFromHand;
 
-      // ✅ OVERRIDE SAFELY
       window.removeFromHand = function(card) {
-
-        // ✅ Always do the local UI removal
+        // ✅ Always remove locally for UI
         originalRemove(card);
 
         if (!connectedToRoom) return;
@@ -528,7 +527,12 @@
         const id = getCardId(card);
         if (!id) return;
 
-        // ✅ Only clear owner IF the card already has real table coordinates
+        // ✅ HARD BLOCK: Never clear owner if drag started from hand
+        if (card.dataset.draggingFromHand === "true") {
+          return;
+        }
+
+        // ✅ Only clear owner if it was truly dropped on the TABLE
         const left = parseInt(card.style.left, 10);
         const top  = parseInt(card.style.top, 10);
 
@@ -536,18 +540,15 @@
           !isNaN(left) &&
           !isNaN(top);
 
-        if (!hasValidPosition) {
-          // ✅ This is a lift from hand → BLOCK owner clear to prevent deck snap
-          return;
-        }
+        if (!hasValidPosition) return;
 
-        // ✅ This is a REAL drop onto the table
         deckRef.child(id).update({
-          owner: null,
+          //owner: null,
           grabbedBy: null
         });
       };
     }
+
 
 
 

@@ -185,7 +185,8 @@ function startCardDrag(card, e) {
 
 
 
-    if (card.parentElement && card.parentElement.classList.contains("deck")) {
+    if (card.parentElement && card.parentElement.classList.contains("deck") && card.dataset.inHand !== "true") {
+
         const startRect = card.getBoundingClientRect();
         document.body.appendChild(card);
         card.style.left = startRect.left + "px";
@@ -226,6 +227,9 @@ function startCardDrag(card, e) {
 
         if (isInsideHandArea(ev)) {
             addToHand(draggedCard);
+        }
+        else {
+            //removeFromHand(draggedCard);
         }
 
         if (handArea) handArea.classList.remove("hovered");
@@ -311,6 +315,9 @@ function addToHand(card) {
     card.dataset.inHand = "true";
     handCards.push(card);
     card.style.zIndex = ++topZIndex;
+
+    card.dataset.ownerSynced = "true";               // local mark that we own it now
+    card.dataset.movedAt = Date.now().toString();
 
     layoutHand();
 }
